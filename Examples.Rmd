@@ -1,0 +1,187 @@
+---
+title: "Exploratory Text Mining Analysis with the R Package - tm"
+author: "Chuan Zhang"
+date: "Friday, October 03, 2014"
+output:
+  html_document:
+    keep_md: yes
+---
+```{r head, echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=TRUE, results="asis", warnings=FALSE, cache=TRUE)
+```
+
+Using three text files, this repository demonstrates how to use the functions I need for my projects from the package <code>tm</code> to explore and analyze text information.
+
+<h4>Data source</h4> 
+The data used in this repository is from a corpus called HC Corpora (www.corpora.heliohost.org). See the readme file at http://www.corpora.heliohost.org/aboutcorpus.html or the file <code>info.txt</code> in this repository for details on the corpora available.
+
+<h4>Load Data</h4>
+We can load the text data in different ways. For example, we can use <code>readLines</code>, <code>scan</code>, <code>Corpus</code> together with <code>readPlain</code> and many other functions. Here I am going to show in examples how to use these three functions.
+
+The function <code>readLines</code> is from the <code>base</code> package, and it reads some or all text lines from a connection. The connection can be the path to a local text file, a complete url and some other objects. It returns a character vector, and its length is the number of lines read. Next, we load the file <code>Eng_US_Newspapers.txt</code> and briefly explore some information about this text file.
+
+```{r load file with readLines, warnings=FALSE}
+file <- './data/Eng_US_Newspapers.txt'
+tvec.news <- readLines(file)
+length(tvec.news)
+sum(nchar(tvec.news))
+```
+
+It has 77,259 lines, and 17,969,650 characters in total. We can use the functions for vectors to manipulate this character vector. Now lets take a look at some of its lines.
+
+```{r}
+head(tvec.news, 3)
+tail(tvec.news, 3)
+```
+
+Similar to <code>readLines</code>, <code>scan</code> is from the <code>base</code> package too, and we can set the argument <code>what="character"</code> to get the <code>scan</code> function return a character vector. Next, I use <code>scan</code> to load the same data.
+
+```{r load file with scan, warnings=FALSE}
+file <- './data/Eng_US_Newspapers.txt'
+tvec.news <- scan(file=file, what="character")
+length(tvec.news)
+sum(nchar(tvec.news))
+```
+
+```{r, echo=FALSE}
+rm(list=ls())
+```
+
+Both <code>VCorpus</code> and <code>PCorpus</code> are from the <code>tm</code> package, and they create a <i>volatile</i> or <i>permanent corpus</i> respectively. Next, I demonstrate in one example how to use <code>VCorpus</code> to read the data file <code>Eng_US_Blogs.txt</code>. 
+
+```{r load raw data}
+library(tm)
+ds  <- DirSource(directory="./data", encoding="UTF-8", mode="text")
+txt <- VCorpus(ds, readerControl=list(reader=readPlain, language="la", load=TRUE))
+```
+
+<h4>Cleaning Data</h4>
+After loading the text data into the memory, next step is to clean the text data, and prepare them for analysis. To clean data, first, we need to take a close look at the data loaded.
+
+```{r exploring text data}
+summary(txt)
+
+data.blog <- VectorSource(txt[[1]])
+names(data.blog$content)
+meta(data.blog$content)
+length(data.blog$content$content)
+data.blog$content$content[1]
+
+data.news <- VectorSource(txt[[2]])
+names(data.news$content)
+meta(data.news$content)
+length(data.news$content$content)
+data.news$content$content[1]
+
+data.twit <- VectorSource(txt[[3]])
+names(data.twit$content)
+meta(data.twit$content)
+length(data.twit$content$content)
+data.twit$content$content[1]
+```
+
+Clearly, all of the three text files have three columns, and the text are all in the third column. As in this repository, I am going to just demonstrate how use the functions mainly from the <code>tm</code> package to do text mining, I will focus on the third column in the third file (<code>Eng_US_Twitter.txt</code>). So next, I remove the other data from the memory, and start cleaning the text data with some typical transformations for text data cleaning.
+
+<h5>data preprocessing</h5>
+
+```{r preprocessing text}
+rm(data.blog, data.news, ds, txt)
+twits <- data.twit$content$content
+twits <- twits[1:5000]
+# 1 million tweets take around 150MB space
+# 0.5 million tweets take around 78MB space
+# 100 thousand tweets take around 16MB
+twits <- strsplit(twits, '\t')
+twits <- as.character(lapply(twits, function(x) x[5]))
+twits <- gsub(pattern="[^a-zA-Z ,.!?\'\"]", replacement="", twits)
+# summary(twits)
+# head(twits,3)
+# rm(data.twit)
+```
+
+<h5>data cleaning</h5>
+
+```{r cleaning data: transformations}
+twits.vcorp <- VectorSource(twits)
+twits.vcorp <- VCorpus(twits.vcorp)
+# corpus of 1 million tweets take 3.6GB memory!!
+# corpus of 0.5 million tweets take 1.8GB memory!!
+# corpus of 100 thousand tweets take around 370MB memory!!
+twits.vcorp <- tm_map(twits.vcorp, removePunctuation)
+twits.vcorp <- tm_map(twits.vcorp, content_transformer(tolower))
+twits.vcorp <- tm_map(twits.vcorp, removeWords, stopwords("english"))
+twits.vcorp <- tm_map(twits.vcorp, removeWords, c("also", "but", "just",
+                                                  "however", "just"))
+twits.vcorp <- tm_map(twits.vcorp, stripWhitespace)
+library(SnowballC)
+twits.vcorp <- tm_map(twits.vcorp, stemDocument)
+twits.vcorp <- tm_map(twits.vcorp, removeNumbers)
+library(lava)
+twits.vcorp <- tm_map(twits.vcorp, content_transformer(trim))
+# after trimming, the 100 thousand twits only take 15MB
+```
+
+<h5>data analysis</h5>
+
+```{r data analysis}
+twits.tdm <- TermDocumentMatrix(twits.vcorp)
+# findFreqTerms(x=twits.tdm, lowfreq=100)
+
+twits.dtm <- DocumentTermMatrix(twits.vcorp)
+# findFreqTerms(x=twits.dtm, lowfreq=100)
+
+# findAssocs(twits.dtm, "back", corlimit=0.1)
+```
+
+<h5>data visualization</h5>
+
+```{r}
+library(Rgraphviz)
+plot(twits.dtm, terms=findFreqTerms(twits.dtm, lowfreq=100)[1:20], corThreshold=0.1)
+freq <- sort(colSums(as.matrix(twits.dtm)), decreasing=TRUE)
+# head(freq, 14)
+```
+
+```{r word cloud}
+library(wordcloud)
+twits.m <- as.matrix(twits.tdm)
+twits.v <- sort(rowSums(twits.m),decreasing=TRUE)
+twits.d <- data.frame(word = names(twits.v),freq=twits.v)
+# table(twits.d$freq)
+pal2 <- brewer.pal(8,"Dark2")
+png("./Examples_files/figure-html/word cloud-1.png", width=1280,height=800)
+wordcloud(twits.d$word, twits.d$freq, scale=c(8,.2),
+          min.freq=10, max.words=Inf, random.order=FALSE, 
+          rot.per=.15, colors=pal2)
+dev.off()
+```
+<img src="./Examples_files/figure-html/word cloud-1.png">
+
+<h5>quantitative analysis</h5>
+
+```{r}
+library(ggvis)
+words <- twits.dtm %>%
+    as.matrix %>%
+    colnames %>%
+    (function(x) x[nchar(x) < 20])
+length(words)
+head(words, 15)
+summary(nchar(words))
+
+library(ggplot2)
+data.frame(nletters=nchar(words)) %>%
+    ggplot(aes(x=nletters)) +
+    geom_histogram(binwidth=1) +
+    geom_vline(xintercept=mean(nchar(words)),
+    colour="green", size=1, alpha=.5) +
+    labs(x="Number of Letters", y="Number of Words")
+```
+
+<h5>references</h5>
+
+[1] Ingo F. (2014) "Introduction to the <strong>tm</strong> Package - Text Mining in <strong>R</strong>", cran.r-project.org/web/packages/tm/vignettes/tm.pdf
+
+[2] Graham W. (2011) "Data Mining with Rattle and R", Springer: New York.
+
